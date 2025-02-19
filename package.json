@@ -1,0 +1,18 @@
+{
+  "name": "3jsJourney_14_lights",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0",
+    "vite-plugin-restart": "^0.4.2"
+  },
+  "dependencies": {
+    "three": "^0.173.0",
+    "lil-gui": "^0.20.0"
+  }
+}
