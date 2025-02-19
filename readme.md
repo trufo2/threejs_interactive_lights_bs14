@@ -3,4 +3,4 @@ The sphere-helpers can be dragged & when a light helper is double-clicked lil-GU
 
 ![screenshot](screenshot.jpg)
 
-see it live on: https://trufo2.github.io/threejs_interactive_lights_bs14/
+see it live on: https://trufo2.github.io/threejs_interactive_lights_bs14
