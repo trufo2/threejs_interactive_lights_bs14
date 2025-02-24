@@ -1,0 +1,40 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+html,body {
+    overflow: hidden;
+    font-family: "Trebuchet MS", sans-serif;
+}
+
+canvas {
+	background-color: #000;
+  position: fixed;
+  top: 0;
+  left: 0;
+  outline: none;
+  z-index: -1
+}
+
+#xo {
+  user-select: none;
+  position: absolute;
+  top: 15px;
+  left: 20px;
+  font-size: 24px;
+  background: rgba(255, 255, 255, 0.03);
+  z-index: 10;
+}
+
+#x, #o {
+  display: inline-block;
+  cursor: pointer;
+  padding: 0 8px 4px;
+  color: white;
+}
+
+#x:hover, #o:hover {
+  background: white;
+  color: black;
+}
