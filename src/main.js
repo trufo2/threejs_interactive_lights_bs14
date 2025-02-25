@@ -4,6 +4,7 @@ import {DragControls} from 'three/addons/controls/DragControls.js'
 import {RectAreaLightHelper} from 'three/addons/helpers/RectAreaLightHelper.js'
 import {RectAreaLightTexturesLib} from 'three/addons/lights/RectAreaLightTexturesLib.js'
 import GUI from 'lil-gui'
+import store from 'store2'
 
 console.warn = () => {};
 function createHelperProxy(colorData) {
@@ -34,14 +35,14 @@ const sizes = {
     },
     camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100),
     lights = {
-        ambientLight: new THREE.AmbientLight(),
+        ambientLight: new THREE.AmbientLight(0xffffff, .1),
         directionalLight: new THREE.DirectionalLight(0x00fffc, 1),
         hemisphereLight: new THREE.HemisphereLight(0xff0000,0x0000ff,.5),
         pointLight: new THREE.PointLight(0xff9000,1,0,1), //intensity,distance(0=noLimit),decay
         rectAreaLight: new THREE.RectAreaLight(0x4e00ff,1,1,1),
         spotLight: new THREE.SpotLight(0x78ff00,2,10,Math.PI*.12,.1,0), //int.,dist.,angle,penumbra,decay
     },
-    lightsIntensity = {
+    o_lightsIntensity = {
         ambientLight: 0,
         directionalLight: 0,
         hemisphereLight: 0,
@@ -65,11 +66,9 @@ const sizes = {
     dragControls = new DragControls(draggableObjects,camera,canvas),
     clock = new THREE.Clock(),
     gui = new GUI(),
-	mouse = new THREE.Vector2(),
-	raycaster = new THREE.Raycaster()
+	raycaster = new THREE.Raycaster(),
+    defaultParams = {}
 gui.hide()
-lights.ambientLight.intensity = .1
-lights.ambientLight.color = new THREE.Color(0xffffff)
 lights.directionalLight.position.set(.3,1,-.3)
 lights.pointLight.position.set(1,-.5,1)
 THREE.RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())//!WEBGPU for areaLight
@@ -99,6 +98,19 @@ lights.spotLight.shadow.camera.left = 2
 lights.spotLight.shadow.camera.right = 2
 areaLightHelperProxy.position.copy(lights.rectAreaLight.position)
 areaLightTargetProxy.position.copy(areaLightTarget)
+Object.keys(lights).forEach(lightName => {
+    defaultParams[lightName] = {
+        intensity: lights[lightName].intensity,
+        color: lights[lightName].color.getHex(),
+        ...(lights[lightName].distance !== undefined && { distance: lights[lightName].distance }),
+        ...(lights[lightName].decay !== undefined && { decay: lights[lightName].decay }),
+        ...(lights[lightName].angle !== undefined && { angle: lights[lightName].angle }),
+        ...(lights[lightName].penumbra !== undefined && { penumbra: lights[lightName].penumbra }),
+        ...(lights[lightName].width !== undefined && { width: lights[lightName].width }),
+        ...(lights[lightName].height !== undefined && { height: lights[lightName].height })
+    }
+    store.namespace('default').set(lightName, defaultParams[lightName])
+})
 const directionalLightControl = gui.addFolder('directionalLightControl').title('directional light'),
     guiDirectionalLightColor = {color: lights.directionalLight.color.getHex(THREE.SRGBColorSpace)},
     ambientAndHemisphereLightControl = gui.addFolder('ambientAndHemisphereLightControl').title('ambient & hemisphere light'),
@@ -114,37 +126,44 @@ const directionalLightControl = gui.addFolder('directionalLightControl').title('
 directionalLightControl.add(lights.directionalLight, 'intensity').min(0).max(16).step(.2)
 directionalLightControl.addColor(guiDirectionalLightColor, 'color').onChange((value) => {
     lights.directionalLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
-ambientAndHemisphereLightControl.add(lights.ambientLight, 'intensity').min(0).max(2).step(.02)
+ambientAndHemisphereLightControl.add(lights.ambientLight, 'intensity').min(0).max(2).step(.02).onChange(updateCurrentLightParameters)
 ambientAndHemisphereLightControl.addColor(guiAmbientLightColor, 'color').onChange((value) => {
     lights.ambientLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
-ambientAndHemisphereLightControl.add(lights.hemisphereLight, 'intensity').min(0).max(4).step(.1)
+ambientAndHemisphereLightControl.add(lights.hemisphereLight, 'intensity').min(0).max(4).step(.1).onChange(updateCurrentLightParameters)
 ambientAndHemisphereLightControl.addColor(guiHemisphereLightSkyColor, 'color').onChange((value) => {
     lights.hemisphereLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
 ambientAndHemisphereLightControl.addColor(guiHemisphereLightGroundColor, 'color').onChange((value) => {
     lights.hemisphereLight.groundColor.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
-pointLightControl.add(lights.pointLight, 'intensity').min(0).max(16).step(.2)
-pointLightControl.add(lights.pointLight, 'decay').min(0).max(16).step(.2)
-pointLightControl.add(lights.pointLight, 'distance').min(.1).max(8).step(.1)
+pointLightControl.add(lights.pointLight, 'intensity').min(0).max(16).step(.2).onChange(updateCurrentLightParameters)
+pointLightControl.add(lights.pointLight, 'decay').min(0).max(16).step(.2).onChange(updateCurrentLightParameters)
+pointLightControl.add(lights.pointLight, 'distance').min(.1).max(8).step(.1).onChange(updateCurrentLightParameters)
 pointLightControl.addColor(guiPointLightColor, 'color').onChange((value) => {
     lights.pointLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
-spotLightControl.add(lights.spotLight, 'intensity').min(0).max(16).step(.2)
-spotLightControl.add(lights.spotLight, 'angle').min(.01).max(.9).step(.01)
-spotLightControl.add(lights.spotLight, 'penumbra').min(0).max(1).step(.01)
-spotLightControl.add(lights.spotLight, 'decay').min(0).max(4).step(.1)
-spotLightControl.add(lights.spotLight, 'distance').min(.1).max(8).step(.1)
+spotLightControl.add(lights.spotLight, 'intensity').min(0).max(16).step(.2).onChange(updateCurrentLightParameters)
+spotLightControl.add(lights.spotLight, 'angle').min(.01).max(.9).step(.01).onChange(updateCurrentLightParameters)
+spotLightControl.add(lights.spotLight, 'penumbra').min(0).max(1).step(.01).onChange(updateCurrentLightParameters)
+spotLightControl.add(lights.spotLight, 'decay').min(0).max(4).step(.1).onChange(updateCurrentLightParameters)
+spotLightControl.add(lights.spotLight, 'distance').min(.1).max(8).step(.1).onChange(updateCurrentLightParameters)
 spotLightControl.addColor(guiSpotLightColor, 'color').onChange((value) => {
     lights.spotLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
-rectAreaLightControl.add(lights.rectAreaLight, 'intensity').min(0).max(64).step(1)
-rectAreaLightControl.add(lights.rectAreaLight, 'width').min(0).max(4).step(.1)
-rectAreaLightControl.add(lights.rectAreaLight, 'height').min(0).max(4).step(.1)
+rectAreaLightControl.add(lights.rectAreaLight, 'intensity').min(0).max(64).step(.1).onChange(updateCurrentLightParameters)
+rectAreaLightControl.add(lights.rectAreaLight, 'width').min(0).max(4).step(.1).onChange(updateCurrentLightParameters)
+rectAreaLightControl.add(lights.rectAreaLight, 'height').min(0).max(4).step(.1).onChange(updateCurrentLightParameters)
 rectAreaLightControl.addColor(guiRectAreaLightColor, 'color').onChange((value) => {
     lights.rectAreaLight.color.setHex(value, THREE.SRGBColorSpace)
+    updateCurrentLightParameters()
 })
 material.roughness = 0.4
 sphere.position.x = - 1.5
@@ -165,6 +184,83 @@ renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+function getLightParams(light) {
+    return {
+        color: light.color.getHex(),
+        ...(light.distance !== undefined && { distance: light.distance }),
+        ...(light.decay !== undefined && { decay: light.decay }),
+        ...(light.angle !== undefined && { angle: light.angle }),
+        ...(light.penumbra !== undefined && { penumbra: light.penumbra }),
+        ...(light.width !== undefined && { width: light.width }),
+        ...(light.height !== undefined && { height: light.height })
+    }
+}
+function setCurrentLightParameters() {
+    Object.keys(lights).forEach(lightName => {
+        const currentParams = store.namespace('current').get(lightName);
+        if (currentParams) {
+            lights[lightName].intensity = currentParams.intensity
+            lights[lightName].color.setHex(currentParams.color)
+            if (currentParams.distance !== undefined) lights[lightName].distance = currentParams.distance
+            if (currentParams.decay !== undefined) lights[lightName].decay = currentParams.decay
+            if (currentParams.angle !== undefined) lights[lightName].angle = currentParams.angle
+            if (currentParams.penumbra !== undefined) lights[lightName].penumbra = currentParams.penumbra
+            if (currentParams.width !== undefined) lights[lightName].width = currentParams.width
+            if (currentParams.height !== undefined) lights[lightName].height = currentParams.height
+        }
+    })
+}
+setCurrentLightParameters()
+var activeLight = [],
+    isSoloMode = false
+function updateCurrentLightParameters() {
+    if (isSoloMode) {
+        let zeroIntensityCount = 0;
+        Object.keys(lights).forEach(lightName => {
+            if (lights[lightName].intensity === 0) {
+                zeroIntensityCount++
+            }
+        })
+        Object.keys(lights).forEach(lightName => {
+            const lightParams_1 = getLightParams(lights[lightName]);
+            if (zeroIntensityCount < 5 || lights[lightName].intensity !== 0) {
+                lightParams_1.intensity = lights[lightName].intensity
+            }
+            store.namespace('current').set(lightName, lightParams_1)
+        })
+        return
+    }
+    Object.keys(lights).forEach(lightName => {
+        const lightParams_2 = {
+            intensity: lights[lightName].intensity,
+            ...getLightParams(lights[lightName])
+        }
+        store.namespace('current').set(lightName, lightParams_2);
+    })
+    lights.directionalLight.color.setHex(guiDirectionalLightColor.color)
+    lights.ambientLight.color.setHex(guiAmbientLightColor.color)
+    lights.hemisphereLight.color.setHex(guiHemisphereLightSkyColor.color)
+    lights.hemisphereLight.groundColor.setHex(guiHemisphereLightGroundColor.color)
+    lights.pointLight.color.setHex(guiPointLightColor.color)
+    lights.spotLight.color.setHex(guiSpotLightColor.color)
+    lights.rectAreaLight.color.setHex(guiRectAreaLightColor.color)
+}
+function revertToAllLightsMode() {
+    Object.keys(lights).forEach(lightName => {
+        if (!activeLight.includes(lights[lightName])) {
+            lights[lightName].intensity = o_lightsIntensity[lightName]
+        }
+    })
+    o_lightsIntensity.saved = false
+    isSoloMode = false
+    updateCurrentLightParameters();
+}
+function copyDefaultToCurrentNamespace() {
+    Object.keys(defaultParams).forEach(lightName => {
+        store.namespace('current').set(lightName, defaultParams[lightName])
+    })
+}
 
 const tick = () => {
     const elapsedTime = clock.getElapsedTime()
@@ -200,10 +296,20 @@ dragControls.addEventListener('drag', () => {
     lights.spotLight.target.position.copy(spotLightTargetProxy.position)
     lights.rectAreaLight.position.copy(areaLightHelperProxy.position)
 })
-var activeLight = []
 document.addEventListener('dblclick', (event) => {
-    if (event.target.closest('#xo')) {
-        if (event.target.id === "x") {
+    if (event.target.closest('#cox')) {
+        if (event.target.id === "c") {
+            copyDefaultToCurrentNamespace()
+            setCurrentLightParameters()
+            //updateCurrentLightParameters()
+        } else if (event.target.id === "o") {
+            if (!isSoloMode) {
+                alert("Double-click a light to select it first.")
+                return
+            } else {
+                revertToAllLightsMode()
+            }
+        } else if (event.target.id === "x") {
             const toggled = draggableObjects[0].visible === false
             draggableObjects.forEach(obj => {
                 obj.visible = toggled
@@ -213,30 +319,12 @@ document.addEventListener('dblclick', (event) => {
             Object.values(helpers).forEach(helper => {
                 helper.visible = toggled
             })
-        } else {
-            if (lightsIntensity.saved) {
-                Object.keys(lights).forEach(lightName => {
-                    if (!activeLight.includes(lights[lightName])) {
-                        lights[lightName].intensity = lightsIntensity[lightName]
-                    }
-                })
-                lightsIntensity.saved = false;
-            } else {
-                Object.keys(lights).forEach(lightName => {
-                    if (!activeLight.includes(lights[lightName])) {
-                        lightsIntensity[lightName] = lights[lightName].intensity
-                        lights[lightName].intensity = 0
-                    }
-                });
-                lightsIntensity.saved = true
-            }
-            console.log(lightsIntensity)
         }
         return
     }
 })
 canvas.addEventListener('dblclick', (event) => {
-    const mouse = new THREE.Vector2(
+	const mouse = new THREE.Vector2(
         (event.clientX / window.innerWidth) * 2 - 1,
         -(event.clientY / window.innerHeight) * 2 + 1
     )
@@ -244,6 +332,9 @@ canvas.addEventListener('dblclick', (event) => {
     const intersects = raycaster.intersectObjects([directionalLightHelperProxy,hemisphereLightHelperProxy,pointLightHelperProxy,spotLightHelperProxy,areaLightHelperProxy])
     if (intersects.length > 0) {
         const object = intersects[0].object
+        if (isSoloMode) {
+            revertToAllLightsMode();
+        }
         if (object === directionalLightHelperProxy) {
             gui.show()
             directionalLightControl.show()
@@ -284,8 +375,17 @@ canvas.addEventListener('dblclick', (event) => {
             pointLightControl.hide()
             directionalLightControl.hide()
             activeLight = [lights.rectAreaLight]
-        } else {gui.hide()}
+        } else {
+            gui.hide()
+        }
+        Object.keys(lights).forEach(lightName => {
+            if (!activeLight.includes(lights[lightName])) {
+                o_lightsIntensity[lightName] = lights[lightName].intensity;
+                lights[lightName].intensity = 0;
+            }
+        })
+        isSoloMode = true
     } else {
-        gui.hide()
+        gui.hide();
     }
 })
